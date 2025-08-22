@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análisis de Delincuencia - Región de Atacama</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Include Chart.js Datalabels Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Atacama -->
+    <!-- Application Structure Plan: A top-down, single-page dashboard structure was chosen over a linear report format to empower user-driven exploration. The flow is designed to guide the user from a high-level regional overview to a detailed, interactive analysis by commune, and finally to specific temporal trends. This non-linear approach is more intuitive for comparing different communes and understanding complex data relationships, which is a key goal identified in the source report analysis. Key interactions include a master commune filter that dynamically updates a dedicated section with charts and summary text. -->
+    <!-- Visualization & Content Choices: Regional Trend (Goal: Change -> Line Chart -> Justification: Shows overall crime evolution clearly). Commune Top Crimes (Goal: Compare/Organize -> Horizontal Bar Chart -> Interaction: Filter by commune/year -> Justification: Best for comparing crime types within a commune, handles long labels well). Temporal Trends (Goal: Change -> Line/Bar Charts -> Justification: Effectively shows monthly/weekly volatility). Key stats are presented in card-style elements for quick comprehension. All charts use Chart.js on a Canvas element. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF7;
+            color: #3D405B;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .stat-card {
+            background-color: #FFFFFF;
+            border: 1px solid #E0E0E0;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .btn-year {
+            background-color: #F0F0F0;
+            color: #3D405B;
+        }
+        .btn-year.active {
+            background-color: #3D405B;
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        /* Spinner styles */
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Análisis Delictual de Atacama</h1>
+            <nav>
+                <a href="#vision-general" class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Visión General</a>
+                <a href="#analisis-comuna" class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Por Comuna</a>
+                <a href="#dinamica-2025" class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Dinámica 2025</a>
+                <a href="#ai-analysis" class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Análisis con IA</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 md:p-8">
+        
+        <section id="vision-general" class="py-12">
+            <h2 class="text-3xl font-bold text-center mb-4">Visión General de la Región</h2>
+            <p id="regional-overview-summary" class="text-center max-w-3xl mx-auto mb-10 text-gray-600">
+                Esta sección presenta un resumen de la frecuencia delictiva total en las siete comunas analizadas de la Región de Atacama para los años 2023, 2024 y las cifras parciales de 2025. Explore las tarjetas para ver los totales y el gráfico para visualizar la tendencia anual.
+            </p>
+            <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h3 class="text-xl font-bold text-center mb-4">Evolución Anual de Delitos en la Región</h3>
+                <!-- New filters for regional overview -->
+                <div class="flex flex-col md:flex-row justify-center items-center gap-4 mb-8">
+                    <div class="w-full md:w-auto">
+                        <label for="delito-select-regional" class="block text-sm font-medium text-gray-700 mb-1">Filtrar por Delito:</label>
+                        <select id="delito-select-regional" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        </select>
+                    </div>
+                    <button id="reset-regional-filters" class="mt-4 md:mt-0 px-6 py-3 bg-gray-200 text-gray-700 font-semibold rounded-lg shadow-md hover:bg-gray-300 transition-colors duration-200">
+                        Limpiar Filtro Regional
+                    </button>
+                </div>
+                <div class="chart-container">
+                    <canvas id="regionalTrendChart"></canvas>
+                </div>
+                <!-- Dynamic text analysis for Regional Trend Chart -->
+                <div id="regional-trend-analysis" class="bg-gray-50 p-6 rounded-xl mt-8 border border-gray-200 text-gray-700">
+                    <!-- Content will be dynamically populated here -->
+                </div>
+            </div>
+        </section>
+
+        <hr class="my-12 border-gray-200">
+
+        <section id="analisis-comuna" class="py-12">
+            <h2 class="text-3xl font-bold text-center mb-4">Análisis Detallado por Comuna</h2>
+            <p class="text-center max-w-3xl mx-auto mb-10 text-gray-600">
+                Seleccione una comuna y un año para explorar en detalle su perfil delictual. El gráfico principal muestra los delitos más frecuentes, permitiendo identificar las problemáticas específicas de cada localidad. Esta herramienta es clave para entender que las realidades de seguridad varían considerablemente dentro de la región.
+            </p>
+            <div class="flex flex-col md:flex-row justify-center items-center gap-4 mb-8">
+                <div class="w-full md:w-auto">
+                    <label for="comuna-select" class="block text-sm font-medium text-gray-700 mb-1">Seleccione Comuna:</label>
+                    <select id="comuna-select" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                </div>
+                <div class="w-full md:w-auto">
+                     <label class="block text-sm font-medium text-gray-700 mb-1 text-center">Seleccione Año:</label>
+                    <div id="year-selector" class="flex justify-center space-x-2 bg-gray-100 p-1 rounded-lg">
+                        <button class="btn-year px-4 py-2 rounded-md transition-colors duration-200" data-year="2023">2023</button>
+                        <button class="btn-year px-4 py-2 rounded-md transition-colors duration-200" data-year="2024">2024</button>
+                        <button class="btn-year px-4 py-2 rounded-md transition-colors duration-200" data-year="2025">2025</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h3 id="comuna-chart-title" class="text-xl font-bold text-center mb-4"></h3>
+                <p id="comuna-summary" class="text-center text-gray-600 mb-6 max-w-2xl mx-auto"></p>
+                <div class="chart-container">
+                    <canvas id="comunaTopCrimesChart"></canvas>
+                </div>
+                <!-- Dynamic text analysis for Comuna Top Crimes Chart -->
+                <div id="comuna-analysis-box" class="bg-gray-50 p-6 rounded-xl mt-8 border border-gray-200 text-gray-700">
+                    <!-- Content will be dynamically populated here -->
+                </div>
+            </div>
+        </section>
+        
+        <hr class="my-12 border-gray-200">
+
+        <section id="dinamica-2025" class="py-12">
+            <h2 class="text-3xl font-bold text-center mb-4">Dinámica Temporal 2025</h2>
+            <p class="text-center max-w-3xl mx-auto mb-10 text-gray-600">
+                Aquí se analiza la volatilidad de la frecuencia delictiva durante 2025 (con datos parciales). Los gráficos muestran las fluctuaciones mensuales y semanales a nivel regional, revelando picos y valles que pueden estar influenciados por factores estacionales y que son cruciales para una planificación táctica ágil.
+            </p>
+            <div class="flex flex-col md:flex-row justify-center items-center gap-4 mb-8">
+                <div class="w-full md:w-auto">
+                    <label for="comuna-dynamic-select" class="block text-sm font-medium text-gray-700 mb-1">Filtrar por Comuna:</label>
+                    <select id="comuna-dynamic-select" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                </div>
+                <div class="w-full md:w-auto">
+                    <label for="delito-dynamic-select" class="block text-sm font-medium text-gray-700 mb-1">Filtrar por Delito:</label>
+                    <select id="delito-dynamic-select" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                </div>
+                 <button id="reset-dynamic-filters" class="mt-4 md:mt-0 px-6 py-3 bg-gray-200 text-gray-700 font-semibold rounded-lg shadow-md hover:bg-gray-300 transition-colors duration-200">
+                    Limpiar Filtros
+                </button>
+            </div>
+            <div class="grid grid-cols-1 gap-8">
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h3 class="text-xl font-bold text-center mb-4">Frecuencia Mensual de Delitos (Ene-Jul 2025)</h3>
+                    <div class="chart-container" style="height: 300px; max-height: 350px;">
+                        <canvas id="monthlyTrend2025Chart"></canvas>
+                    </div>
+                    <!-- Dynamic text analysis for Monthly Trend 2025 Chart -->
+                    <div id="monthly-analysis-box" class="bg-gray-50 p-6 rounded-xl mt-8 border border-gray-200 text-gray-700">
+                        <!-- Content will be dynamically populated here -->
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h3 class="text-xl font-bold text-center mb-4">Frecuencia Semanal de Delitos (Sem 23-31, 2025)</h3>
+                     <div class="chart-container" style="height: 300px; max-height: 350px;">
+                        <canvas id="weeklyTrend2025Chart"></canvas>
+                    </div>
+                    <!-- Dynamic text analysis for Weekly Trend 2025 Chart -->
+                    <div id="weekly-analysis-box" class="bg-gray-50 p-6 rounded-xl mt-8 border border-gray-200 text-gray-700">
+                        <!-- Content will be dynamically populated here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <hr class="my-12 border-gray-200">
+
+        <section id="ai-analysis" class="py-12">
+            <h2 class="text-3xl font-bold text-center mb-4">Análisis y Recomendaciones con IA</h2>
+            <p class="text-center max-w-3xl mx-auto mb-10 text-gray-600">
+                Seleccione una comuna para obtener un análisis detallado y recomendaciones estratégicas generadas por inteligencia artificial sobre la dinámica delictual.
+            </p>
+            <div class="flex flex-col md:flex-row justify-center items-center gap-4 mb-8">
+                <div class="w-full md:w-auto">
+                    <label for="comuna-ai-select" class="block text-sm font-medium text-gray-700 mb-1">Seleccione Comuna para Análisis IA:</label>
+                    <select id="comuna-ai-select" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                </div>
+            </div>
+            <div id="ai-analysis-output" class="bg-white p-6 rounded-xl shadow-md min-h-[200px] text-left text-gray-700">
+                <p>Seleccione una comuna para generar el análisis.</p>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-gray-800 text-white mt-16">
+        <div class="container mx-auto px-4 py-6 text-center">
+            <p>&copy; 2025 Panel de Análisis Delictual. Creado a partir de datos de la Ley STOP.</p>
+            <p class="text-sm text-gray-400 mt-2">Este es un instrumento de visualización y no constituye un informe policial oficial.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Updated rawData with content from the new CSV file 'Prueba Ley STOP.xlsx - Hoja1.csv'
+        const rawData = `Codreg,Codcom,Región,Comuna,delito,Frecuencia 2023,Frecuencia 2024,Frecuencia 2025 (a la fecha),Frecuencia enero 2025,Frecuencia febrero 2025,Frecuencia marzo 2025,Frecuencia abril 2025,Frecuencia mayo 2025,Frecuencia junio 2025,Frecuencia julio 2025,Frecuencia Semana 23-2025,Frecuencia Semana 24-2025,Frecuencia Semana 25-2025,Frecuencia Semana 26-2025,Frecuencia Semana 27-2025,Frecuencia Semana 28-2025,Frecuencia Semana 29-2025,Frecuencia Semana 30-2025,Frecuencia Semana 31-2025
+3,3101,Atacama,Copiapó,AMENAZAS CON ARMAS,16,25,10,3,0,3,1,1,1,1,0,0,1,0,0,0,0,1,0
+3,3101,Atacama,Copiapó,AMENAZAS Y RIÑAS,1114,958,524,81,59,99,69,52,88,76,21,20,17,14,16,22,17,17,20
+3,3101,Atacama,Copiapó,CONSUMO DE ALCOHOL Y DE DROGAS EN LA VÍA PÚBLICA,411,375,156,37,24,32,8,18,8,29,1,4,2,1,0,7,4,9,9
+3,3101,Atacama,Copiapó,DAÑOS,1290,1302,682,86,83,134,82,77,126,94,28,23,28,25,22,22,22,25,25
+3,3101,Atacama,Copiapó,DELITOS EN CONTEXTO DE VIOLENCIA INTRAFAMILIAR,1244,1088,528,100,87,93,77,63,53,55,8,8,11,10,16,8,11,16,20
+3,3101,Atacama,Copiapó,HOMICIDIOS Y FEMICIDIOS,13,11,7,1,0,1,1,2,2,0,0,0,0,0,2,0,0,0,0
+3,3101,Atacama,Copiapó,HURTOS,876,818,462,59,52,76,53,61,79,82,21,15,17,15,11,17,23,18,24
+3,3101,Atacama,Copiapó,INCIVILIDADES,468,422,235,15,14,85,32,25,36,28,6,5,14,5,6,4,9,10,5
+3,3101,Atacama,Copiapó,LESIONES GRAVES,89,60,32,2,6,5,3,7,3,6,0,1,0,1,1,3,2,1,0
+3,3101,Atacama,Copiapó,LESIONES LEVES,577,503,230,31,26,37,48,24,36,28,6,10,7,7,6,6,2,11,9
+3,3101,Atacama,Copiapó,LESIONES MENOS GRAVES,65,78,23,4,2,6,3,2,3,3,0,0,1,1,1,0,0,1,2
+3,3101,Atacama,Copiapó,LEY DE CONTROL DE ARMAS,157,169,93,9,4,20,8,14,24,14,3,5,3,3,10,2,4,2,6
+3,3101,Atacama,Copiapó,LEY DE DROGAS,237,198,110,10,13,26,13,24,8,16,1,4,0,1,2,7,4,2,3
+3,3101,Atacama,Copiapó,OTROS DESÓRDENES PÚBLICOS,14,12,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0
+3,3101,Atacama,Copiapó,OTROS ROBOS CON FUERZA EN LAS COSAS,119,73,52,5,7,12,2,8,9,9,3,1,1,1,3,4,2,1,2
+3,3101,Atacama,Copiapó,RECEPTACIÓN,89,115,37,6,3,7,7,7,2,5,0,1,0,1,0,1,1,2,1
+3,3101,Atacama,Copiapó,ROBOS CON VIOLENCIA E INTIMIDACIÓN,686,637,292,34,32,50,48,46,43,39,8,11,8,9,7,5,10,14,10
+3,3101,Atacama,Copiapó,ROBOS DE VEHÍCULOS Y SUS ACCESORIOS,1074,1146,618,80,79,130,68,72,100,89,15,30,22,16,17,24,20,27,18
+3,3101,Atacama,Copiapó,ROBOS EN LUGARES HABITADOS Y NO HABITADOS,1099,903,480,92,70,60,54,60,74,70,8,9,18,21,18,23,20,18,9
+3,3101,Atacama,Copiapó,ROBOS POR SORPRESA,174,230,108,12,21,21,14,13,14,13,3,2,3,5,1,3,3,4,3
+3,3101,Atacama,Copiapó,VIOLACIONES Y DELITOS SEXUALES,87,96,38,5,7,6,5,4,6,5,1,0,0,2,3,1,2,0,2
+3,3102,Atacama,Caldera,AMENAZAS CON ARMAS,4,0,3,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+3,3102,Atacama,Caldera,AMENAZAS Y RIÑAS,262,235,142,26,20,15,17,21,25,18,5,4,4,6,6,3,5,3,7
+3,3102,Atacama,Caldera,CONSUMO DE ALCOHOL Y DE DROGAS EN LA VÍA PÚBLICA,406,204,222,52,60,51,16,14,9,20,5,2,1,0,1,5,11,3,1
+3,3102,Atacama,Caldera,DAÑOS,192,204,102,24,17,23,10,9,9,10,5,1,2,1,0,3,4,3,0
+3,3102,Atacama,Caldera,DELITOS EN CONTEXTO DE VIOLENCIA INTRAFAMILIAR,200,188,122,22,28,21,11,15,14,11,4,0,0,5,5,5,2,1,3
+3,3102,Atacama,Caldera,HOMICIDIOS Y FEMICIDIOS,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+3,3102,Atacama,Caldera,HURTOS,143,115,61,14,10,8,13,2,9,5,2,1,1,2,3,2,2,0,1
+3,3102,Atacama,Caldera,INCIVILIDADES,63,62,33,5,6,4,1,6,5,6,1,1,2,0,1,1,2,0,3
+3,3102,Atacama,Caldera,LESIONES GRAVES,10,11,6,1,1,1,1,0,0,2,0,0,0,0,0,1,1,0,0
+33,3102,Atacama,Caldera,LESIONES LEVES,126,138,54,11,9,5,9,7,7,6,1,2,4,0,0,1,2,2,1
+33,3102,Atacama,Caldera,LESIONES MENOS GRAVES,38,33,17,3,2,3,3,1,0,5,0,0,0,0,0,1,3,0,1
+33,3102,Atacama,Caldera,LEY DE CONTROL DE ARMAS,29,37,15,3,1,5,0,0,1,5,0,1,0,0,0,0,2,1,2
+33,3102,Atacama,Caldera,LEY DE DROGAS,32,18,18,3,6,1,3,0,3,2,0,1,0,1,1,0,1,1,0
+33,3102,Atacama,Caldera,OTROS DESÓRDENES PÚBLICOS,4,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3102,Atacama,Caldera,OTROS ROBOS CON FUERZA EN LAS COSAS,4,11,11,1,3,4,1,0,2,0,0,0,0,0,2,0,0,0
+33,3102,Atacama,Caldera,RECEPTACIÓN,24,26,12,0,1,2,2,2,1,4,1,0,0,0,0,2,2,0,0
+33,3102,Atacama,Caldera,ROBOS CON VIOLENCIA E INTIMIDACIÓN,72,63,21,2,5,6,2,3,1,2,0,0,0,1,0,0,1,0,1
+33,3102,Atacama,Caldera,ROBOS DE VEHÍCULOS Y SUS ACCESORIOS,73,71,57,22,15,1,9,3,4,3,2,0,1,0,1,0,0,1,2
+33,3102,Atacama,Caldera,ROBOS EN LUGARES HABITADOS Y NO HABITADOS,301,194,84,15,12,13,15,6,18,5,5,2,3,2,6,0,0,2,3
+33,3102,Atacama,Caldera,ROBOS POR SORPRESA,12,13,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3102,Atacama,Caldera,VIOLACIONES Y DELITOS SEXUALES,24,31,20,4,3,2,7,0,1,3,0,1,0,0,0,2,0,0,1
+33,3103,Atacama,Tierra Amarilla,AMENAZAS CON ARMAS,14,7,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0
+33,3103,Atacama,Tierra Amarilla,AMENAZAS Y RIÑAS,142,156,61,9,15,11,9,6,6,5,1,1,0,2,2,1,0,1,3
+33,3103,Atacama,Tierra Amarilla,CONSUMO DE ALCOHOL Y DE DROGAS EN LA VÍA PÚBLICA,144,126,30,7,7,7,1,1,7,0,1,0,2,3,1,0,0,0,0
+33,3103,Atacama,Tierra Amarilla,DAÑOS,120,116,56,9,5,12,6,8,10,6,4,2,4,0,0,1,3,1,1
+33,3103,Atacama,Tierra Amarilla,DELITOS EN CONTEXTO DE VIOLENCIA INTRAFAMILIAR,144,96,67,8,13,10,13,7,9,7,1,0,1,4,3,2,3,2,0
+33,3103,Atacama,Tierra Amarilla,HOMICIDIOS Y FEMICIDIOS,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3103,Atacama,Tierra Amarilla,HURTOS,59,67,34,3,2,5,7,4,6,7,1,0,2,0,3,0,1,3,3
+33,3103,Atacama,Tierra Amarilla,INCIVILIDADES,42,27,14,3,2,1,0,1,2,5,1,0,1,0,0,4,0,1,0
+33,3103,Atacama,Tierra Amarilla,LESIONES GRAVES,12,10,4,0,0,1,0,2,1,0,1,0,0,0,0,0,0,0,0
+33,3103,Atacama,Tierra Amarilla,LESIONES LEVES,88,74,46,2,9,7,7,9,6,6,3,3,0,0,0,4,2,0,0
+33,3103,Atacama,Tierra Amarilla,LESIONES MENOS GRAVES,20,15,9,1,3,0,3,0,1,1,0,1,0,0,0,1,0,0,0
+33,3103,Atacama,Tierra Amarilla,LEY DE CONTROL DE ARMAS,14,6,2,0,0,0,0,0,1,1,1,0,0,0,0,0,0,1,0
+33,3103,Atacama,Tierra Amarilla,LEY DE DROGAS,15,5,3,0,0,1,0,0,1,1,1,0,0,0,0,0,0,0,1
+33,3103,Atacama,Tierra Amarilla,OTROS DESÓRDENES PÚBLICOS,4,1,3,0,0,0,1,1,1,0,0,1,0,0,0,0,0,0,0
+33,3103,Atacama,Tierra Amarilla,OTROS ROBOS CON FUERZA EN LAS COSAS,4,6,3,0,0,0,0,1,2,0,0,0,0,1,1,0,0,0,0
+33,3103,Atacama,Tierra Amarilla,RECEPTACIÓN,14,11,4,0,1,0,1,1,1,0,0,0,0,1,0,0,0,0,0
+33,3103,Atacama,Tierra Amarilla,ROBOS CON VIOLENCIA E INTIMIDACIÓN,60,31,23,5,2,6,2,3,1,4,0,0,0,1,0,2,0,0,2
+33,3103,Atacama,Tierra Amarilla,ROBOS DE VEHÍCULOS Y SUS ACCESORIOS,20,34,9,1,0,1,0,2,5,0,0,1,2,2,0,0,0,0,0
+33,3103,Atacama,Tierra Amarilla,ROBOS EN LUGARES HABITADOS Y NO HABITADOS,244,176,69,9,7,7,11,15,10,10,2,0,1,2,5,2,2,3,3
+33,3103,Atacama,Tierra Amarilla,ROBOS POR SORPRESA,8,6,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0
+33,3103,Atacama,Tierra Amarilla,VIOLACIONES Y DELITOS SEXUALES,12,12,7,1,1,0,2,1,2,0,1,0,1,0,0,0,0,0,0
+33,3201,Atacama,Chañaral,AMENAZAS CON ARMAS,2,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3201,Atacama,Chañaral,AMENAZAS Y RIÑAS,129,102,72,11,11,8,8,16,9,9,2,3,3,1,0,1,3,3,2
+33,3201,Atacama,Chañaral,CONSUMO DE ALCOHOL Y DE DROGAS EN LA VÍA PÚBLICA,107,119,67,9,3,13,3,7,10,22,1,0,1,5,3,0,4,2,16
+33,3201,Atacama,Chañaral,DAÑOS,93,91,63,10,4,14,13,6,8,8,1,2,0,3,2,3,2,2,1
+33,3201,Atacama,Chañaral,DELITOS EN CONTEXTO DE VIOLENCIA INTRAFAMILIAR,100,85,54,7,5,12,3,4,15,8,0,8,2,1,4,2,3,3,0
+33,3201,Atacama,Chañaral,HOMICIDIOS Y FEMICIDIOS,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3201,Atacama,Chañaral,HURTOS,117,67,21,6,5,3,1,3,2,1,0,0,0,0,2,1,0,0,0
+33,3201,Atacama,Chañaral,INCIVILIDADES,73,77,36,10,2,4,6,4,6,4,1,1,1,1,2,2,0,2,0
+33,3201,Atacama,Chañaral,LESIONES GRAVES,4,5,10,3,2,1,2,1,1,0,0,0,1,0,0,0,0,0,0
+33,3201,Atacama,Chañaral,LESIONES LEVES,74,75,36,1,6,6,3,6,5,9,4,1,0,0,0,4,0,3,2
+33,3201,Atacama,Chañaral,LESIONES MENOS GRAVES,12,22,2,0,0,0,0,1,0,1,0,0,0,0,0,0,0,1,0
+33,3201,Atacama,Chañaral,LEY DE CONTROL DE ARMAS,7,5,4,0,0,1,0,1,1,1,1,0,0,0,0,0,0,1,0
+33,3201,Atacama,Chañaral,LEY DE DROGAS,20,18,13,4,2,3,0,0,3,1,0,0,0,3,0,0,0,1,0
+33,3201,Atacama,Chañaral,OTROS DESÓRDENES PÚBLICOS,10,5,2,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3201,Atacama,Chañaral,OTROS ROBOS CON FUERZA EN LAS COSAS,3,1,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0
+33,3201,Atacama,Chañaral,RECEPTACIÓN,27,35,16,2,4,6,1,0,2,1,0,1,1,0,0,0,0,0,1
+33,3201,Atacama,Chañaral,ROBOS CON VIOLENCIA E INTIMIDACIÓN,27,25,2,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3201,Atacama,Chañaral,ROBOS DE VEHÍCULOS Y SUS ACCESORIOS,45,24,8,4,0,3,1,0,0,0,0,0,0,0,0,0,0,0,0
+33,3201,Atacama,Chañaral,ROBOS EN LUGARES HABITADOS Y NO HABITADOS,129,117,14,1,3,1,1,3,2,3,0,1,0,0,1,3,0,0,0
+33,3201,Atacama,Chañaral,ROBOS POR SORPRESA,2,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3201,Atacama,Chañaral,VIOLACIONES Y DELITOS SEXUALES,4,12,6,3,0,2,1,0,0,0,0,0,0,0,0,0,0,0,0
+33,3202,Atacama,Diego de Almagro,AMENAZAS CON ARMAS,11,1,2,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0
+33,3202,Atacama,Diego de Almagro,AMENAZAS Y RIÑAS,132,140,67,7,7,10,12,10,11,10,4,0,4,2,1,3,2,3,2
+33,3202,Atacama,Diego de Almagro,CONSUMO DE ALCOHOL Y DE DROGAS EN LA VÍA PÚBLICA,542,208,129,13,32,33,14,6,6,25,0,1,4,0,1,3,14,5,3
+33,3202,Atacama,Diego de Almagro,DAÑOS,74,65,34,2,3,5,7,5,6,6,1,2,3,0,0,0,3,1,2
+33,3202,Atacama,Diego de Almagro,DELITOS EN CONTEXTO DE VIOLENCIA INTRAFAMILIAR,87,82,51,7,7,5,8,4,12,8,1,6,1,1,3,2,2,3,1
+33,3202,Atacama,Diego de Almagro,HOMICIDIOS Y FEMICIDIOS,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3202,Atacama,Diego de Almagro,HURTOS,88,84,31,3,4,7,5,7,4,1,1,0,2,0,1,0,0,1,0
+33,3202,Atacama,Diego de Almagro,INCIVILIDADES,153,117,59,10,7,6,7,14,7,8,1,1,1,1,3,1,3,2,2
+33,3202,Atacama,Diego de Almagro,LESIONES GRAVES,4,2,3,2,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0
+33,3202,Atacama,Diego de Almagro,LESIONES LEVES,57,50,40,4,4,10,7,7,6,2,1,1,2,2,0,0,2,0,0
+33,3202,Atacama,Diego de Almagro,LESIONES MENOS GRAVES,10,7,6,0,1,1,2,1,0,1,0,0,0,0,0,0,1,0,0
+33,3202,Atacama,Diego de Almagro,LEY DE CONTROL DE ARMAS,31,11,12,1,2,3,1,0,4,1,1,2,1,0,0,1,0,0,0
+33,3202,Atacama,Diego de Almagro,LEY DE DROGAS,17,19,12,2,1,4,2,1,1,1,1,0,0,0,0,0,1,0,0
+33,3202,Atacama,Diego de Almagro,OTROS DESÓRDENES PÚBLICOS,10,7,5,3,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3202,Atacama,Diego de Almagro,OTROS ROBOS CON FUERZA EN LAS COSAS,12,3,2,0,1,0,0,0,1,0,0,0,0,1,0,0,0,0,0
+33,3202,Atacama,Diego de Almagro,RECEPTACIÓN,13,4,2,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0
+33,3202,Atacama,Diego de Almagro,ROBOS CON VIOLENCIA E INTIMIDACIÓN,24,13,9,2,2,3,0,0,2,0,0,0,1,1,0,0,0,0,0
+33,3202,Atacama,Diego de Almagro,ROBOS DE VEHÍCULOS Y SUS ACCESORIOS,12,5,2,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0
+33,3202,Atacama,Diego de Almagro,ROBOS EN LUGARES HABITADOS Y NO HABITADOS,112,82,57,6,6,13,7,8,7,10,0,1,1,2,3,3,4,1,2
+33,3202,Atacama,Diego de Almagro,ROBOS POR SORPRESA,1,5,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3202,Atacama,Diego de Almagro,VIOLACIONES Y DELITOS SEXUALES,9,10,5,1,0,1,0,1,0,2,0,0,0,0,0,1,0,0,1
+33,3301,Atacama,Vallenar,AMENAZAS CON ARMAS,12,13,2,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3301,Atacama,Vallenar,AMENAZAS Y RIÑAS,402,343,176,30,37,32,25,16,16,20,5,6,1,3,1,4,6,3,7
+33,3301,Atacama,Vallenar,CONSUMO DE ALCOHOL Y DE DROGAS EN LA VÍA PÚBLICA,269,172,102,11,10,35,18,8,9,11,2,3,0,3,1,2,3,2,4
+33,3301,Atacama,Vallenar,DAÑOS,528,495,289,35,32,46,51,36,53,36,11,10,13,10,9,9,11,10,6
+33,3301,Atacama,Vallenar,DELITOS EN CONTEXTO DE VIOLENCIA INTRAFAMILIAR,517,581,296,52,43,69,38,33,38,23,11,6,5,11,5,4,7,9,3
+33,3301,Atacama,Vallenar,HOMICIDIOS Y FEMICIDIOS,0,0,3,0,0,0,2,0,0,1,0,0,0,0,0,1,0,0,0
+33,3301,Atacama,Vallenar,HURTOS,299,251,119,22,18,21,10,16,16,16,2,4,5,0,5,4,1,5,6
+33,3301,Atacama,Vallenar,INCIVILIDADES,305,262,108,13,11,20,13,17,23,11,7,5,3,5,3,6,1,1,3
+33,3301,Atacama,Vallenar,LESIONES GRAVES,38,27,14,1,5,3,1,2,2,0,1,1,0,0,0,0,0,0,0
+33,3301,Atacama,Vallenar,LESIONES LEVES,203,208,88,16,8,15,9,9,18,13,3,3,5,5,2,6,2,2,3
+33,3301,Atacama,Vallenar,LESIONES MENOS GRAVES,51,38,22,1,2,5,2,6,5,1,0,2,1,0,2,0,0,1,0
+33,3301,Atacama,Vallenar,LEY DE CONTROL DE ARMAS,65,65,64,2,2,13,7,6,8,26,1,0,0,5,2,6,10,8,2
+33,3301,Atacama,Vallenar,LEY DE DROGAS,78,66,25,0,1,10,4,3,4,3,0,3,1,0,0,0,1,1,1
+33,3301,Atacama,Vallenar,OTROS DESÓRDENES PÚBLICOS,2,3,2,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,0
+33,3301,Atacama,Vallenar,OTROS ROBOS CON FUERZA EN LAS COSAS,34,56,27,5,6,6,1,1,4,4,1,0,2,1,0,1,3,0,0
+33,3301,Atacama,Vallenar,RECEPTACIÓN,29,22,10,1,1,2,1,2,2,1,0,1,0,1,0,0,0,1,0
+33,3301,Atacama,Vallenar,ROBOS CON VIOLENCIA E INTIMIDACIÓN,148,140,99,13,8,17,19,10,16,16,2,4,2,7,1,5,3,4,4
+33,3301,Atacama,Vallenar,ROBOS DE VEHÍCULOS Y SUS ACCESORIOS,269,174,128,19,20,14,14,16,29,16,8,2,8,6,5,1,5,6,4
+33,3301,Atacama,Vallenar,ROBOS EN LUGARES HABITADOS Y NO HABITADOS,357,308,169,27,32,18,25,21,19,27,1,4,8,2,4,6,5,11,5
+33,3301,Atacama,Vallenar,ROBOS POR SORPRESA,28,34,19,2,4,5,2,3,2,1,0,1,0,0,1,0,0,0,1
+33,3301,Atacama,Vallenar,VIOLACIONES Y DELITOS SEXUALES,38,36,13,2,0,2,2,5,1,1,0,0,0,0,1,0,0,1,0
+33,3302,Atacama,Alto del Carmen,AMENAZAS CON ARMAS,3,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,AMENAZAS Y RIÑAS,34,25,20,2,3,6,2,1,2,4,0,0,0,0,2,1,2,1,0
+33,3302,Atacama,Alto del Carmen,CONSUMO DE ALCOHOL Y DE DROGAS EN LA VÍA PÚBLICA,35,44,16,0,0,1,5,4,2,4,1,0,0,0,1,0,3,0,1
+33,3302,Atacama,Alto del Carmen,DAÑOS,55,40,23,5,3,3,1,3,1,7,1,0,0,0,0,1,1,1,4
+33,3302,Atacama,Alto del Carmen,DELITOS EN CONTEXTO DE VIOLENCIA INTRAFAMILIAR,39,25,14,2,2,0,2,3,4,1,2,0,1,1,0,0,0,1,0
+33,3302,Atacama,Alto del Carmen,HOMICIDIOS Y FEMICIDIOS,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,HURTOS,14,12,8,2,1,1,0,1,3,0,0,2,0,0,1,0,0,0,0
+33,3302,Atacama,Alto del Carmen,INCIVILIDADES,16,13,7,1,0,1,3,0,1,1,1,0,0,0,0,0,1,0,0
+33,3302,Atacama,Alto del Carmen,LESIONES GRAVES,1,2,2,1,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0
+33,3302,Atacama,Alto del Carmen,LESIONES LEVES,19,15,9,0,1,0,2,3,2,1,1,0,1,0,0,0,1,0,0
+33,3302,Atacama,Alto del Carmen,LESIONES MENOS GRAVES,4,2,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,LEY DE CONTROL DE ARMAS,5,2,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,LEY DE DROGAS,17,21,2,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,OTROS DESÓRDENES PÚBLICOS,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,OTROS ROBOS CON FUERZA EN LAS COSAS,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,RECEPTACIÓN,0,0,2,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,ROBOS CON VIOLENCIA E INTIMIDACIÓN,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,ROBOS DE VEHÍCULOS Y SUS ACCESORIOS,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,ROBOS EN LUGARES HABITADOS Y NO HABITADOS,14,11,7,1,1,2,0,0,1,2,0,0,0,0,1,2,0,0,0
+33,3302,Atacama,Alto del Carmen,ROBOS POR SORPRESA,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3302,Atacama,Alto del Carmen,VIOLACIONES Y OTROS DELITOS SEXUALES,2,0,4,1,0,0,0,0,0,3,0,0,0,0,0,0,0,1,2
+33,3303,Atacama,Freirina,AMENAZAS CON ARMAS,3,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0
+33,3303,Atacama,Freirina,AMENAZAS Y RIÑAS,86,95,28,7,1,5,5,3,5,2,1,1,2,1,0,0,2,0,0
+33,3303,Atacama,Freirina,CONSUMO DE ALCOHOL Y DE DROGAS EN LA VÍA PÚBLICA,82,37,50,16,9,3,9,2,7,4,2,0,5,0,0,1,2,1,0
+33,3303,Atacama,Freirina,DAÑOS,73,56,28,4,4,5,4,2,5,4,0,2,2,0,1,0,1,1,2
+33,3303,Atacama,Freirina,DELITOS EN CONTEXTO DE VIOLENCIA INTRAFAMILIAR,66,67,29,5,1,5,8,4,4,2,1,0,1,2,0,0,0,1,1
+33,3303,Atacama,Freirina,HOMICIDIOS Y FEMICIDIOS,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3303,Atacama,Freirina,HURTOS,31,35,16,3,1,1,4,3,3,1,2,0,0,0,1,0,0,1,0
+33,3303,Atacama,Freirina,INCIVILIDADES,36,42,38,6,3,7,6,4,6,6,0,1,3,1,1,5,0,0,1
+33,3303,Atacama,Freirina,LESIONES GRAVES,4,7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3303,Atacama,Freirina,LESIONES LEVES,41,30,18,2,1,4,3,0,7,1,3,0,3,1,0,1,0,0,0
+33,3303,Atacama,Freirina,LESIONES MENOS GRAVES,7,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3303,Atacama,Freirina,LEY DE CONTROL DE ARMAS,6,8,10,1,4,0,1,1,3,0,1,1,0,1,0,0,0,0,0
+33,3303,Atacama,Freirina,LEY DE DROGAS,11,10,6,0,1,1,0,3,0,1,0,0,0,0,0,0,1,0,0
+33,3303,Atacama,Freirina,OTROS DESÓRDENES PÚBLICOS,3,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3303,Atacama,Freirina,OTROS ROBOS CON FUERZA EN LAS COSAS,2,0,2,1,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0
+33,3303,Atacama,Freirina,RECEPTACIÓN,2,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3303,Atacama,Freirina,ROBOS CON VIOLENCIA E INTIMIDACIÓN,11,8,5,0,0,1,2,1,0,1,0,0,0,0,0,1,0,0,0
+33,3303,Atacama,Freirina,ROBOS DE VEHÍCULOS Y SUS ACCESORIOS,5,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3303,Atacama,Freirina,ROBOS EN LUGARES HABITADOS Y NO HABITADOS,40,36,23,1,4,3,5,4,3,3,1,0,0,1,1,2,0,0,1
+33,3303,Atacama,Freirina,ROBOS POR SORPRESA,1,0,2,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+33,3303,Atacama,Freirina,VIOLACIONES Y DELITOS SEXUALES,7,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3304,Atacama,Huasco,AMENAZAS CON ARMAS,1,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3304,Atacama,Huasco,AMENAZAS Y RIÑAS,108,104,64,9,15,15,5,7,8,5,3,2,0,2,1,0,3,1,1
+33,3304,Atacama,Huasco,CONSUMO DE ALCOHOL Y DE DROGAS EN LA VÍA PÚBLICA,177,112,79,28,17,4,2,13,11,4,5,0,1,0,5,1,2,1,0
+33,3304,Atacama,Huasco,DAÑOS,77,73,50,11,4,4,7,7,10,7,2,1,4,1,2,1,2,1,3
+33,3304,Atacama,Huasco,DELITOS EN CONTEXTO DE VIOLENCIA INTRAFAMILIAR,130,87,40,7,4,6,5,5,9,4,2,2,2,2,1,1,1,1,1
+33,3304,Atacama,Huasco,HOMICIDIOS Y FEMICIDIOS,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3304,Atacama,Huasco,HURTOS,51,24,32,4,6,6,5,3,5,3,2,1,1,1,0,2,1,0,0
+33,3304,Atacama,Huasco,INCIVILIDADES,62,63,46,11,6,8,2,9,6,4,0,1,1,0,4,1,1,2,0
+33,3304,Atacama,Huasco,LESIONES GRAVES,2,10,7,1,4,1,0,0,1,0,0,0,0,1,0,0,0,0,0
+33,3304,Atacama,Huasco,LESIONES LEVES,53,75,28,1,6,4,4,3,5,5,3,0,1,1,0,2,2,0,1
+33,3304,Atacama,Huasco,LESIONES MENOS GRAVES,12,8,2,0,0,0,0,0,1,1,0,1,0,0,0,1,0,0,0
+33,3304,Atacama,Huasco,LEY DE CONTROL DE ARMAS,16,8,11,2,3,1,1,3,0,1,0,0,0,0,0,1,0,0,0
+33,3304,Atacama,Huasco,LEY DE DROGAS,16,4,19,5,6,2,0,2,2,2,0,1,0,0,1,0,0,0,2
+33,3304,Atacama,Huasco,OTROS DESÓRDENES PÚBLICOS,2,6,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0
+33,3304,Atacama,Huasco,OTROS ROBOS CON FUERZA EN LAS COSAS,3,3,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0
+33,3304,Atacama,Huasco,RECEPTACIÓN,7,5,6,1,4,0,1,0,0,0,0,0,0,0,0,0,0,0,0
+33,3304,Atacama,Huasco,ROBOS CON VIOLENCIA E INTIMIDACIÓN,20,9,10,1,3,1,0,1,1,3,0,0,0,0,1,1,2,0,0
+33,3304,Atacama,Huasco,ROBOS DE VEHÍCULOS Y SUS ACCESORIOS,12,8,5,0,1,1,0,1,0,2,0,0,0,0,0,2,0,0,0
+33,3304,Atacama,Huasco,ROBOS EN LUGARES HABITADOS Y NO HABITADOS,96,98,20,6,1,3,3,0,4,3,1,0,3,0,0,0,0,2,1
+33,3304,Atacama,Huasco,ROBOS POR SORPRESA,0,3,1,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0
+33,3304,Atacama,Huasco,VIOLACIONES Y DELITOS SEXUALES,11,11,7,0,0,1,2,1,2,1,2,0,0,0,0,0,1,0,0`;
+
+        let crimeData = [];
+        let charts = {};
+        let selectedComuna = '';
+        let selectedYear = '2024';
+        let selectedRegionalDelito = 'Todos'; // New state for regional delito filter
+        let selectedDynamicComuna = 'Todos'; // New state for dynamic filters
+        let selectedDynamicDelito = 'Todos'; // New state for dynamic filters
+        let selectedAIComuna = ''; // New state for AI analysis comuna filter
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Register the datalabels plugin globally for all charts
+            Chart.register(ChartDataLabels);
+            parseData();
+            initFilters();
+            renderRegionalOverview();
+            renderComunaDashboard();
+            render2025Dynamics(); // Initial render for 2025 dynamics
+            setupEventListeners();
+            // Initial render for AI analysis
+            if (document.getElementById('comuna-ai-select').value) {
+                renderAIAnalysis();
+            }
+        });
+
+        function parseData() {
+            const lines = rawData.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            crimeData = lines.slice(1).map(line => {
+                const values = line.split(',');
+                const entry = {};
+                headers.forEach((header, i) => {
+                    const value = values[i] ? values[i].trim() : '';
+                    entry[header] = isNaN(Number(value)) || value === '' ? value : Number(value);
+                });
+                return entry;
+            });
+        }
+
+        function initFilters() {
+            const comunaSelect = document.getElementById('comuna-select');
+            const comunas = [...new Set(crimeData.map(d => d.Comuna))].sort();
+            comunaSelect.innerHTML = ''; 
+            comunas.forEach(comuna => {
+                const option = document.createElement('option');
+                option.value = comuna;
+                option.textContent = comuna;
+                comunaSelect.appendChild(option);
+            });
+            selectedComuna = comunas[0];
+            comunaSelect.value = selectedComuna;
+
+            document.querySelectorAll('.btn-year').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.btn-year[data-year="${selectedYear}"]`).classList.add('active');
+
+            // Initialize regional delito filter
+            const delitoSelectRegional = document.getElementById('delito-select-regional');
+            const delitos = [...new Set(crimeData.map(d => d.delito))].sort();
+            let optionAllRegionalDelitos = document.createElement('option');
+            optionAllRegionalDelitos.value = 'Todos';
+            optionAllRegionalDelitos.textContent = 'Todos los Delitos';
+            delitoSelectRegional.appendChild(optionAllRegionalDelitos);
+            delitos.forEach(delito => {
+                const option = document.createElement('option');
+                option.value = delito;
+                option.textContent = delito;
+                delitoSelectRegional.appendChild(option);
+            });
+            selectedRegionalDelito = 'Todos'; // Default to 'Todos'
+            delitoSelectRegional.value = selectedRegionalDelito;
+
+            // Initialize dynamic filters for 2025 section
+            const comunaDynamicSelect = document.getElementById('comuna-dynamic-select');
+            const delitoDynamicSelect = document.getElementById('delito-dynamic-select');
+            
+            comunaDynamicSelect.innerHTML = '';
+            delitoDynamicSelect.innerHTML = '';
+
+            let optionAllComunas = document.createElement('option');
+            optionAllComunas.value = 'Todos';
+            optionAllComunas.textContent = 'Todas las Comunas';
+            comunaDynamicSelect.appendChild(optionAllComunas);
+            comunas.forEach(comuna => {
+                const option = document.createElement('option');
+                option.value = comuna;
+                option.textContent = comuna;
+                comunaDynamicSelect.appendChild(option);
+            });
+
+            let optionAllDelitos = document.createElement('option');
+            optionAllDelitos.value = 'Todos';
+            optionAllDelitos.textContent = 'Todos los Delitos';
+            delitoDynamicSelect.appendChild(optionAllDelitos);
+            delitos.forEach(delito => {
+                const option = document.createElement('option');
+                option.value = delito;
+                option.textContent = delito;
+                delitoDynamicSelect.appendChild(option);
+            });
+
+            // Initialize AI analysis comuna filter
+            const comunaAISelect = document.getElementById('comuna-ai-select');
+            comunaAISelect.innerHTML = '';
+            comunas.forEach(comuna => {
+                const option = document.createElement('option');
+                option.value = comuna;
+                option.textContent = comuna;
+                comunaAISelect.appendChild(option);
+            });
+            selectedAIComuna = comunas[0];
+            comunaAISelect.value = selectedAIComuna;
+        }
+
+        function setupEventListeners() {
+            document.getElementById('comuna-select').addEventListener('change', (e) => {
+                selectedComuna = e.target.value;
+                renderComunaDashboard();
+            });
+
+            document.getElementById('year-selector').addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON') {
+                    selectedYear = e.target.dataset.year;
+                    document.querySelectorAll('.btn-year').forEach(btn => btn.classList.remove('active'));
+                    e.target.classList.add('active');
+                    renderComunaDashboard();
+                }
+            });
+
+            // Event listeners for regional delito filter
+            document.getElementById('delito-select-regional').addEventListener('change', (e) => {
+                selectedRegionalDelito = e.target.value;
+                renderRegionalOverview();
+            });
+
+            document.getElementById('reset-regional-filters').addEventListener('click', () => {
+                selectedRegionalDelito = 'Todos';
+                document.getElementById('delito-select-regional').value = 'Todos';
+                renderRegionalOverview();
+            });
+
+            // Event listeners for dynamic filters
+            document.getElementById('comuna-dynamic-select').addEventListener('change', (e) => {
+                selectedDynamicComuna = e.target.value;
+                render2025Dynamics();
+            });
+
+            document.getElementById('delito-dynamic-select').addEventListener('change', (e) => {
+                selectedDynamicDelito = e.target.value;
+                render2025Dynamics();
+            });
+
+            document.getElementById('reset-dynamic-filters').addEventListener('click', () => {
+                selectedDynamicComuna = 'Todos';
+                selectedDynamicDelito = 'Todos';
+                document.getElementById('comuna-dynamic-select').value = 'Todos';
+                document.getElementById('delito-dynamic-select').value = 'Todos';
+                render2025Dynamics();
+            });
+
+            // Event listener for AI analysis comuna filter
+            document.getElementById('comuna-ai-select').addEventListener('change', (e) => {
+                selectedAIComuna = e.target.value;
+                renderAIAnalysis();
+            });
+        }
+
+        function renderRegionalOverview() {
+            let filteredRegionalData = crimeData;
+            if (selectedRegionalDelito !== 'Todos') {
+                filteredRegionalData = crimeData.filter(d => d.delito === selectedRegionalDelito);
+            }
+
+            const total2023 = filteredRegionalData.reduce((sum, d) => sum + d['Frecuencia 2023'], 0);
+            const total2024 = filteredRegionalData.reduce((sum, d) => sum + d['Frecuencia 2024'], 0);
+            const total2025 = filteredRegionalData.reduce((sum, d) => sum + d['Frecuencia 2025 (a la fecha)'], 0);
+
+            const change23_24 = total2023 > 0 ? ((total2024 - total2023) / total2023 * 100).toFixed(2) : 'N/A';
+            const change24_25 = total2024 > 0 ? ((total2025 - total2024) / total2024 * 100).toFixed(2) : 'N/A';
+            
+            const statsContainer = document.getElementById('stats-container');
+            statsContainer.innerHTML = `
+                <div class="stat-card">
+                    <p class="text-gray-500 text-lg">Total Delitos 2023</p>
+                    <p class="text-4xl font-bold mt-2">${total2023.toLocaleString('es-CL')}</p>
+                </div>
+                <div class="stat-card">
+                    <p class="text-gray-500 text-lg">Total Delitos 2024</p>
+                    <p class="text-4xl font-bold mt-2">${total2024.toLocaleString('es-CL')}</p>
+                    <p class="text-sm mt-2 ${change23_24 < 0 ? 'text-green-600' : 'text-red-600'}">${change23_24}% vs 2023</p>
+                </div>
+                <div class="stat-card">
+                    <p class="text-gray-500 text-lg">Total Delitos 2025 (parcial)</p>
+                    <p class="text-4xl font-bold mt-2">${total2025.toLocaleString('es-CL')}</p>
+                    <p class="text-sm mt-2 ${change24_25 < 0 ? 'text-green-600' : 'text-red-600'}">${change24_25}% vs 2024</p>
+                </div>
+            `;
+            
+            // Update the regional overview summary text
+            const regionalSummary = document.getElementById('regional-overview-summary');
+            if (selectedRegionalDelito !== 'Todos') {
+                regionalSummary.textContent = `Esta sección presenta un resumen de la frecuencia del delito "${selectedRegionalDelito}" en las siete comunas analizadas de la Región de Atacama para los años 2023, 2024 y las cifras parciales de 2025. Explore las tarjetas para ver los totales y el gráfico para visualizar la tendencia anual.`;
+            } else {
+                regionalSummary.textContent = `Esta sección presenta un resumen de la frecuencia delictiva total en las siete comunas analizadas de la Región de Atacama para los años 2023, 2024 y las cifras parciales de 2025. Explore las tarjetas para ver los totales y el gráfico para visualizar la tendencia anual.`;
+            }
+
+
+            const ctx = document.getElementById('regionalTrendChart').getContext('2d');
+            if (charts.regional) charts.regional.destroy();
+            charts.regional = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['2023', '2024', '2025 (a la fecha)'],
+                    datasets: [{
+                        label: `Frecuencia Total de ${selectedRegionalDelito !== 'Todos' ? selectedRegionalDelito : 'Delitos'}`,
+                        data: [total2023, total2024, total2025],
+                        backgroundColor: '#81A1C1',
+                        borderColor: '#5E81AC',
+                        borderWidth: 1
+                    }]
+                },
+                options: chartOptions('Evolución de Delitos Regionales', false, false, true, false) // Added true for datalabels, false for legend
+            });
+
+            // Update analysis text for Regional Trend Chart
+            const regionalAnalysisBox = document.getElementById('regional-trend-analysis');
+            let analysisText = `Este gráfico muestra la evolución de la frecuencia de delitos para la Región de Atacama`;
+            if (selectedRegionalDelito !== 'Todos') {
+                analysisText += ` para el delito de <strong>"${selectedRegionalDelito}"</strong>`;
+            } else {
+                analysisText += ` en total`;
+            }
+            analysisText += ` durante los años 2023, 2024 y lo que va de 2025.`;
+            analysisText += `<br>En <strong>2023</strong> se registraron <strong>${total2023.toLocaleString('es-CL')}</strong> casos.`;
+            analysisText += `<br>Para <strong>2024</strong>, la cifra fue de <strong>${total2024.toLocaleString('es-CL')}</strong>, lo que representa una `;
+            analysisText += `<span class="${change23_24 < 0 ? 'text-green-600' : 'text-red-600'} font-bold">variación del ${change23_24}%</span> respecto a 2023.`;
+            analysisText += `<br>Hasta la fecha en <strong>2025</strong>, se han contabilizado <strong>${total2025.toLocaleString('es-CL')}</strong> delitos, mostrando una `;
+            analysisText += `<span class="${change24_25 < 0 ? 'text-green-600' : 'text-red-600'} font-bold">variación del ${change24_25}%</span> en comparación con 2024.`;
+            analysisText += `<br>Es importante recordar que los datos de 2025 son parciales y no representan un año completo.`;
+            regionalAnalysisBox.innerHTML = analysisText;
+        }
+
+        function renderComunaDashboard() {
+            const yearKey = selectedYear === '2025' ? 'Frecuencia 2025 (a la fecha)' : `Frecuencia ${selectedYear}`;
+            const comunaData = crimeData.filter(d => d.Comuna === selectedComuna);
+            
+            const topCrimes = comunaData
+                .map(d => ({ delito: d.delito, frecuencia: d[yearKey] }))
+                .sort((a, b) => b.frecuencia - a.frecuencia)
+                .slice(0, 7);
+
+            const totalComuna = comunaData.reduce((sum, d) => sum + d[yearKey], 0);
+            
+            document.getElementById('comuna-chart-title').textContent = `Principales Delitos en ${selectedComuna} (${selectedYear})`;
+            document.getElementById('comuna-summary').textContent = `En ${selectedYear}, ${selectedComuna} registró un total de ${totalComuna.toLocaleString('es-CL')} delitos. El delito más frecuente fue "${topCrimes[0].delito}" con ${topCrimes[0].frecuencia.toLocaleString('es-CL')} casos.`;
+
+            const ctx = document.getElementById('comunaTopCrimesChart').getContext('2d');
+            if (charts.comuna) charts.comuna.destroy();
+            charts.comuna = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: topCrimes.map(d => wrapLabel(d.delito, 25)),
+                    datasets: [{
+                        label: `Frecuencia en ${selectedYear}`,
+                        data: topCrimes.map(d => d.frecuencia),
+                        backgroundColor: '#88C0D0',
+                        borderColor: '#5E81AC',
+                        borderWidth: 1
+                    }]
+                },
+                options: chartOptions(`Delitos más frecuentes en ${selectedComuna}`, true, false, true, false) // Passed true for datalabels, false for legend
+            });
+
+            // Update analysis text for Comuna Top Crimes Chart
+            const comunaAnalysisBox = document.getElementById('comuna-analysis-box');
+            let analysisText = `Este gráfico muestra los <strong>${topCrimes.length} delitos más frecuentes</strong> en <strong>${selectedComuna}</strong> durante <strong>${selectedYear}</strong>.`;
+            if (topCrimes.length > 0) {
+                analysisText += `<br>El delito con mayor incidencia es <strong>"${topCrimes[0].delito}"</strong> con <strong>${topCrimes[0].frecuencia.toLocaleString('es-CL')}</strong> casos.`;
+                if (topCrimes.length > 1) {
+                    analysisText += `<br>Le siguen de cerca "${topCrimes[1].delito}" con ${topCrimes[1].frecuencia.toLocaleString('es-CL')} casos y "${topCrimes[2].delito}" con ${topCrimes[2].frecuencia.toLocaleString('es-CL')} casos.`;
+                }
+            } else {
+                analysisText += `<br>No hay datos de delitos disponibles para ${selectedComuna} en ${selectedYear}.`;
+            }
+            analysisText += `<br>El total de delitos registrados en esta comuna durante el año seleccionado es de <strong>${totalComuna.toLocaleString('es-CL')}</strong>.`;
+            comunaAnalysisBox.innerHTML = analysisText;
+        }
+        
+        function render2025Dynamics() {
+            let filteredDynamicData = crimeData;
+
+            if (selectedDynamicComuna !== 'Todos') {
+                filteredDynamicData = filteredDynamicData.filter(d => d.Comuna === selectedDynamicComuna);
+            }
+            if (selectedDynamicDelito !== 'Todos') {
+                filteredDynamicData = filteredDynamicData.filter(d => d.delito === selectedDynamicDelito);
+            }
+
+            const monthlyHeaders = Object.keys(crimeData[0]).filter(h => h.startsWith('Frecuencia') && h.includes('2025') && !h.includes('Semana') && !h.includes('fecha'));
+            const monthlyLabels = monthlyHeaders.map(h => {
+                const monthName = h.split(' ')[1];
+                switch(monthName) {
+                    case 'enero': return 'Ene';
+                    case 'febrero': return 'Feb';
+                    case 'marzo': return 'Mar';
+                    case 'abril': return 'Abr';
+                    case 'mayo': return 'May';
+                    case 'junio': return 'Jun';
+                    case 'julio': return 'Jul';
+                    default: return monthName;
+                }
+            });
+            const monthlyData = monthlyHeaders.map(header => filteredDynamicData.reduce((sum, d) => sum + (d[header] || 0), 0));
+
+            // Calculate monthly average
+            const monthlyAverage = monthlyData.length > 0 ? monthlyData.reduce((a, b) => a + b, 0) / monthlyData.length : 0;
+            const averageLineData = new Array(monthlyLabels.length).fill(monthlyAverage); // Create an array for the average line
+
+            const weeklyHeaders = Object.keys(crimeData[0]).filter(h => h.startsWith('Frecuencia Semana'));
+            const weeklyLabels = weeklyHeaders.map(h => {
+                const parts = h.split(' '); // e.g., ["Frecuencia", "Semana", "23-2025"]
+                if (parts.length >= 3) {
+                    return `Semana ${parts[2].replace('-2025', '')}`; // Result: "Semana 23"
+                }
+                return h; // Fallback if format is unexpected
+            });
+            const weeklyData = weeklyHeaders.map(header => filteredDynamicData.reduce((sum, d) => sum + (d[header] || 0), 0));
+
+            // Calculate weekly average
+            const weeklyAverage = weeklyData.length > 0 ? weeklyData.reduce((a, b) => a + b, 0) / weeklyData.length : 0;
+            const averageWeeklyLineData = new Array(weeklyLabels.length).fill(weeklyAverage); // Create an array for the weekly average line
+
+
+            const monthlyCtx = document.getElementById('monthlyTrend2025Chart').getContext('2d');
+            if (charts.monthly) charts.monthly.destroy();
+            charts.monthly = new Chart(monthlyCtx, {
+                type: 'line',
+                data: {
+                    labels: monthlyLabels,
+                    datasets: [{
+                        label: 'Total Delitos',
+                        data: monthlyData,
+                        borderColor: '#B48EAD',
+                        backgroundColor: 'rgba(180, 142, 173, 0.2)',
+                        fill: true,
+                        datalabels: {
+                            display: false // Explicitly hide datalabels for bars
+                        }
+                    },
+                    { // New dataset for the average line
+                        label: 'Promedio Mensual',
+                        data: averageLineData,
+                        borderColor: '#BF616A', // Highlighted color
+                        borderDash: [5, 5], // Dashed line
+                        borderWidth: 2,
+                        fill: false,
+                        pointRadius: 0, // No points for the average line
+                        datalabels: {
+                            display: function(context) { // Show only for the last point
+                                return context.dataIndex === context.dataset.data.length - 1;
+                            },
+                            color: '#BF616A', // Color for the average label
+                            align: 'right', // Align to the right of the last point
+                            anchor: 'end', // Anchor at the end of the line
+                            offset: 10, // Increased offset for better visibility
+                            formatter: function(value) { // Formatter to display label and value
+                                return `Promedio mensual: ${value.toLocaleString('es-CL', { maximumFractionDigits: 0 })}`;
+                            }
+                        }
+                    }]
+                },
+                options: chartOptions('Frecuencia Mensual 2025', false, true, false, true) // Passed true for isIntegerYAxis and showLegend
+            });
+
+            // Update analysis text for Monthly Trend 2025 Chart
+            const monthlyAnalysisBox = document.getElementById('monthly-analysis-box');
+            let monthlyAnalysisText = `Este gráfico muestra la frecuencia mensual de delitos en 2025`;
+            if (selectedDynamicComuna !== 'Todos') {
+                monthlyAnalysisText += ` para la comuna de <strong>${selectedDynamicComuna}</strong>`;
+            }
+            if (selectedDynamicDelito !== 'Todos') {
+                monthlyAnalysisText += ` del delito de <strong>"${selectedDynamicDelito}"</strong>`;
+            }
+            monthlyAnalysisText += `.`;
+            if (monthlyData.length > 0) {
+                const maxMonth = monthlyLabels[monthlyData.indexOf(Math.max(...monthlyData))];
+                const minMonth = monthlyLabels[monthlyData.indexOf(Math.min(...monthlyData))];
+                monthlyAnalysisText += `<br>Se observa una <strong>volatilidad considerable</strong>, con un pico de <strong>${Math.max(...monthlyData).toLocaleString('es-CL')}</strong> delitos en <strong>${maxMonth}</strong> y un valle de <strong>${Math.min(...monthlyData).toLocaleString('es-CL')}</strong> delitos en <strong>${minMonth}</strong>.`;
+                monthlyAnalysisText += `<br>El promedio mensual de delitos es de aproximadamente <strong>${monthlyAverage.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</strong>.`;
+                monthlyAnalysisText += `<br>Estas fluctuaciones pueden estar influenciadas por factores estacionales o coyunturales.`;
+            } else {
+                monthlyAnalysisText += `<br>No hay datos mensuales disponibles para los filtros seleccionados.`;
+            }
+            monthlyAnalysisBox.innerHTML = monthlyAnalysisText;
+
+
+            const weeklyCtx = document.getElementById('weeklyTrend2025Chart').getContext('2d');
+            if (charts.weekly) charts.weekly.destroy();
+            charts.weekly = new Chart(weeklyCtx, {
+                type: 'bar', // Keep as bar for the weekly data
+                data: {
+                    labels: weeklyLabels,
+                    datasets: [{
+                        label: 'Total Delitos',
+                        data: weeklyData,
+                        backgroundColor: '#A3BE8C',
+                        borderColor: '#8FBCBB',
+                        borderWidth: 1,
+                        datalabels: {
+                            display: false // Explicitly hide datalabels for bars
+                        }
+                    },
+                    { // New dataset for the average line
+                        label: 'Promedio Semanal',
+                        data: averageWeeklyLineData,
+                        type: 'line', // Set this dataset type to line
+                        borderColor: '#BF616A', // Highlighted color
+                        borderDash: [5, 5], // Dashed line
+                        borderWidth: 2,
+                        fill: false,
+                        pointRadius: 0, // No points for the average line
+                        datalabels: {
+                            display: function(context) { // Show only for the last point
+                                return context.dataIndex === context.dataset.data.length - 1;
+                            },
+                            color: '#BF616A', // Color for the average label
+                            align: 'right', // Align to the right of the last point
+                            anchor: 'end', // Anchor at the end of the line
+                            offset: 10, // Increased offset for better visibility
+                            formatter: function(value) { // Formatter to display label and value
+                                return `Promedio semanal: ${value.toLocaleString('es-CL', { maximumFractionDigits: 0 })}`;
+                            }
+                        }
+                    }
+                    ]
+                },
+                options: chartOptions('Frecuencia Semanal 2025', false, true, false, true) // Passed true for isIntegerYAxis and showLegend
+            });
+
+            // Update analysis text for Weekly Trend 2025 Chart
+            const weeklyAnalysisBox = document.getElementById('weekly-analysis-box');
+            let weeklyAnalysisText = `Este gráfico detalla la frecuencia semanal de delitos en 2025 (Semanas 23-31)`;
+            if (selectedDynamicComuna !== 'Todos') {
+                weeklyAnalysisText += ` para la comuna de <strong>${selectedDynamicComuna}</strong>`;
+            }
+            if (selectedDynamicDelito !== 'Todos') {
+                weeklyAnalysisText += ` del delito de <strong>"${selectedDynamicDelito}"</strong>`;
+            }
+            weeklyAnalysisText += `.`;
+            if (weeklyData.length > 0) {
+                const lastWeekIndex = weeklyData.length - 1;
+                const firstWeekData = weeklyData[0];
+                const lastWeekData = weeklyData[lastWeekIndex];
+                const maxWeek = weeklyLabels[weeklyData.indexOf(Math.max(...weeklyData))];
+                const minWeek = weeklyLabels[weeklyData.indexOf(Math.min(...weeklyData))];
+
+                weeklyAnalysisText += `<br>Se observa una <strong>alta volatilidad</strong>, con un pico de <strong>${Math.max(...weeklyData).toLocaleString('es-CL')}</strong> delitos en <strong>${maxWeek}</strong> y un valle de <strong>${Math.min(...weeklyData).toLocaleString('es-CL')}</strong> delitos en <strong>${minWeek}</strong>.`;
+                
+                if (lastWeekData > firstWeekData) {
+                    weeklyAnalysisText += `<br>La frecuencia de delitos al final del período (Semana ${weeklyLabels[lastWeekIndex].replace('Semana ', '')}, con <strong>${lastWeekData.toLocaleString('es-CL')}</strong> delitos) es <strong>superior</strong> a la del inicio (Semana ${weeklyLabels[0].replace('Semana ', '')}, con <strong>${firstWeekData.toLocaleString('es-CL')}</strong> delitos), lo que podría indicar una tendencia al alza en este período.`;
+                } else if (lastWeekData < firstWeekData) {
+                    weeklyAnalysisText += `<br>La frecuencia de delitos al final del período (Semana ${weeklyLabels[lastWeekIndex].replace('Semana ', '')}, con <strong>${lastWeekData.toLocaleString('es-CL')}</strong> delitos) es <strong>inferior</strong> a la del inicio (Semana ${weeklyLabels[0].replace('Semana ', '')}, con <strong>${firstWeekData.toLocaleString('es-CL')}</strong> delitos), lo que podría indicar una tendencia a la baja en este período.`;
+                } else {
+                    weeklyAnalysisText += `<br>La frecuencia de delitos al final del período es similar a la del inicio.`;
+                }
+                weeklyAnalysisText += `<br>Esta granularidad es crucial para la planificación táctica de la policía y una respuesta más ágil.`;
+            } else {
+                weeklyAnalysisText += `<br>No hay datos semanales disponibles para los filtros seleccionados.`;
+            }
+            weeklyAnalysisBox.innerHTML = weeklyAnalysisText;
+        }
+
+        async function renderAIAnalysis() {
+            const aiAnalysisOutput = document.getElementById('ai-analysis-output');
+            aiAnalysisOutput.innerHTML = '<div class="spinner mx-auto"></div><p class="mt-4 text-center">Generando análisis con IA para ' + selectedAIComuna + '...</p>';
+
+            const comunaData = crimeData.filter(d => d.Comuna === selectedAIComuna);
+            
+            if (comunaData.length === 0) {
+                aiAnalysisOutput.innerHTML = '<p>No hay datos disponibles para la comuna seleccionada para el análisis de IA.</p>';
+                return;
+            }
+
+            // Prepare data for the AI prompt
+            let promptData = `Análisis de la delincuencia para la comuna de ${selectedAIComuna}:\n\n`;
+            
+            // Summarize crime frequency per year
+            const years = ['2023', '2024', '2025 (a la fecha)'];
+            years.forEach(year => {
+                const totalCrimes = comunaData.reduce((sum, d) => sum + (d[`Frecuencia ${year}`] || d[year]), 0); // Handle "Frecuencia 2025 (a la fecha)"
+                promptData += `En ${year}, se registraron ${totalCrimes.toLocaleString('es-CL')} delitos.\n`;
+            });
+
+            // Identify top crimes for each year
+            years.forEach(year => {
+                const yearKey = `Frecuencia ${year}`;
+                const crimesByYear = comunaData
+                    .map(d => ({ delito: d.delito, frecuencia: d[yearKey] || d[year] })) // Handle "Frecuencia 2025 (a la fecha)"
+                    .filter(d => d.frecuencia > 0)
+                    .sort((a, b) => b.frecuencia - a.frecuencia)
+                    .slice(0, 3);
+                
+                if (crimesByYear.length > 0) {
+                    promptData += `Los 3 delitos más frecuentes en ${year} fueron:\n`;
+                    crimesByYear.forEach((crime, index) => {
+                        promptData += `${index + 1}. ${crime.delito}: ${crime.frecuencia.toLocaleString('es-CL')} casos\n`;
+                    });
+                } else {
+                    promptData += `No hay datos de delitos específicos para ${year}.\n`;
+                }
+                promptData += '\n';
+            });
+
+            // Add overall context and ask for analysis and recommendations
+            promptData += `Basado en esta información y considerando que los datos de 2025 son parciales, por favor, genera un análisis conciso de las tendencias delictivas, los delitos más predominantes, y ofrece al menos 3 recomendaciones específicas para abordar la seguridad pública en la comuna de ${selectedAIComuna}. Organiza tu respuesta en secciones claras: "Tendencias Generales", "Delitos Predominantes", y "Recomendaciones Estratégicas".`;
+            
+            let chatHistory = [];
+            chatHistory.push({ role: "user", parts: [{ text: promptData }] });
+
+            const payload = { contents: chatHistory };
+            const apiKey = ""; // If you want to use models other than gemini-2.5-flash-preview-05-20 or imagen-3.0-generate-002, provide an API key here. Otherwise, leave this as-is.
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            // Exponential backoff retry logic
+            const maxRetries = 5;
+            let currentRetry = 0;
+            let success = false;
+            while (currentRetry < maxRetries && !success) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        aiAnalysisOutput.innerHTML = formatAIResponse(text);
+                        success = true;
+                    } else {
+                        throw new Error('Unexpected API response structure or missing content.');
+                    }
+                } catch (error) {
+                    console.error('Error fetching AI analysis:', error);
+                    currentRetry++;
+                    if (currentRetry < maxRetries) {
+                        const delay = Math.pow(2, currentRetry) * 1000; // Exponential backoff
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        aiAnalysisOutput.innerHTML = '<p class="text-red-500">Error al generar el análisis con IA. Por favor, intente de nuevo más tarde.</p>';
+                    }
+                }
+            }
+        }
+
+        // Helper function to format the AI response with basic markdown to HTML conversion
+        function formatAIResponse(text) {
+            let formattedText = text;
+
+            // Convert bold text
+            formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+            // Convert headings (order matters for patterns)
+            formattedText = formattedText.replace(/### (.*)/g, '<h3>$1</h3>');
+            formattedText = formattedText.replace(/## (.*)/g, '<h2>$1</h2>');
+
+            // Convert bullet points to list items (multiline global)
+            formattedText = formattedText.replace(/^\* (.*)$/gm, '<li>$1</li>');
+
+            // Wrap consecutive <li> tags in <ul> tags.
+            // This regex looks for one or more <li> tags, potentially separated by whitespace,
+            // and wraps the entire block. The `s` flag allows `.` to match newlines.
+            formattedText = formattedText.replace(/(<li>.*?<\/li>(?:\s*<li>.*?<\/li>)*)/gs, '<ul>$1</ul>');
+
+            // Convert remaining newlines to <br> tags for general text paragraphs.
+            // Split by double newlines to find distinct paragraphs.
+            let blocks = formattedText.split(/\n\s*\n/);
+            let finalHtml = [];
+
+            for (let i = 0; i < blocks.length; i++) {
+                let block = blocks[i].trim();
+                if (block === '') continue; // Skip empty blocks
+
+                // If the block starts with a known HTML tag (headings, lists), keep it as is.
+                // Otherwise, wrap it in a paragraph tag and convert internal newlines to <br>.
+                if (block.startsWith('<h') || block.startsWith('<ul') || block.startsWith('<p')) {
+                    finalHtml.push(block);
+                } else {
+                    // Convert single newlines within this text block to <br> for line breaks
+                    finalHtml.push('<p>' + block.replace(/\n/g, '<br>') + '</p>');
+                }
+            }
+
+            formattedText = finalHtml.join('');
+
+            // Final cleanup for any extraneous empty paragraph tags or redundant breaks
+            formattedText = formattedText.replace(/<p>\s*<\/p>/g, ''); // Remove empty paragraph tags
+
+            return formattedText;
+        }
+
+
+        function chartOptions(title, isHorizontal = false, isIntegerYAxis = false, showDatalabels = false, showLegend = false) { // Added showLegend parameter
+            const options = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: showLegend // Use showLegend parameter
+                    },
+                    tooltip: {
+                        backgroundColor: '#3D405B',
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 12 },
+                        padding: 10,
+                        cornerRadius: 4,
+                        displayColors: false
+                    },
+                    datalabels: { // Datalabels configuration for the whole chart (can be overridden by datasets)
+                        display: showDatalabels,
+                        color: '#3D405B', // Changed color to a darker shade for better contrast
+                        font: {
+                            weight: 'bold',
+                            size: 14 // Increased font size
+                        },
+                        anchor: 'end',
+                        align: 'top',
+                        formatter: function(value) {
+                            return value.toLocaleString('es-CL'); // Format number with locale
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#4C566A' },
+                        grid: { display: false }
+                    },
+                    y: {
+                        ticks: {
+                            color: '#4C566A',
+                            precision: isIntegerYAxis ? 0 : undefined // Set precision for integer Y-axis
+                        },
+                        grid: { color: '#E5E9F0' },
+                        beginAtZero: true
+                    }
+                }
+            };
+            if (isHorizontal) {
+                options.indexAxis = 'y';
+            }
+            return options;
+        }
+
+        function wrapLabel(str, maxWidth) {
+            if (str.length <= maxWidth) return str;
+            const words = str.split(' ');
+            let lines = [];
+            let currentLine = '';
+            for (const word of words) {
+                if ((currentLine + word).length > maxWidth) {
+                    lines.push(currentLine.trim());
+                    currentLine = '';
+                }
+                currentLine += word + ' ';
+            }
+            lines.push(currentLine.trim());
+            return lines;
+        }
+
+    </script>
+
+</body>
+</html>
